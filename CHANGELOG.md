@@ -11,5 +11,6 @@ All notable changes to this project are documented here. The format follows
 - `createFonepayWatcher`: websocket push, app foreground and polling funnelled into one verification.
 - `openBank`, `buildBankDeepLink`, `filterBanks` and `parseSocketMessage`.
 - `FonepayError` with stable `FonepayErrorCode` values.
+- `onSuccess`, `onCancel` and `onError` callbacks on every flow; `verify` is optional where the gateway SDK reports a trustworthy result.
 - Standard payment lifecycle shared by all Klixsoft payment packages: `runPaymentFlow`,
   `usePaymentFlow`, `pollPaymentState` and the `PaymentState` / `PaymentOutcome` / `PaymentStatus` types.

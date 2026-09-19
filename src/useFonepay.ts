@@ -17,6 +17,8 @@ export interface UseFonepayOptions {
   verify: () => Promise<PaymentState>;
   onSuccess?: () => void;
   onFailure?: () => void;
+  /** Called when `initiate` throws. */
+  onError?: (error: unknown) => void;
   /** Calls `initiate` on mount instead of waiting for `start()`. */
   autoStart?: boolean;
   /** Poll period. Defaults to 5000 ms. */
@@ -101,6 +103,7 @@ export function useFonepay(options: UseFonepayOptions): UseFonepayResult {
     } catch (caught) {
       setError(caught);
       setStatus('failed');
+      latest.current.onError?.(caught);
     } finally {
       running.current = false;
     }

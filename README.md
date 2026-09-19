@@ -68,6 +68,10 @@ Every Klixsoft payment package follows the same three-step lifecycle, so switchi
 
 The result of `present` is never treated as proof of payment. Only `verify` decides the outcome, and it should always be answered by your server from Fonepay's own API.
 
+### Do I need `verify`?
+
+Yes. Fonepay gives the device no proof of payment: returning from Fonepay only means the user came back. Only **your server**, asking Fonepay's API, knows whether it was paid, so `verify` is what turns "the user returned" into `success`. It is also what makes the flow resilient: if the app is killed or the network drops, calling `verify` again later gives the right answer.
+
 ## Quick start
 
 ```tsx
@@ -78,6 +82,7 @@ function FonepayPicker({ orderId, onPaid }: { orderId: string; onPaid: () => voi
     initiate: () => api.post(`/orders/${orderId}/fonepay`),
     verify: async () => (await api.get(`/orders/${orderId}/status`)).status,
     onSuccess: onPaid,
+    onError: (error) => Toast.show(error instanceof Error ? error.message : 'Could not start the payment'),
     autoStart: true,
   });
 
@@ -109,6 +114,7 @@ function FonepayPicker({ orderId, onPaid }: { orderId: string; onPaid: () => voi
 | `initiate` | required | Returns the `FonepaySession` your server created. |
 | `verify` | required | Returns `'success' \| 'failed' \| 'pending'`. |
 | `onSuccess` / `onFailure` | none | Called once when the server settles the payment. |
+| `onError` | none | Called when `initiate` throws. |
 | `autoStart` | `false` | Call `initiate` on mount instead of waiting for `start()`. |
 | `pollIntervalMs` | `5000` | Poll period. |
 
@@ -175,7 +181,7 @@ Full signatures and options are in the [API reference](docs/api-reference.md).
 
 ## Errors
 
-`FonepayError.code` is `E_OPEN_FAILED` (the bank app could not be opened, usually not installed) or `E_INVALID_ARGUMENTS`. The generic helpers raise `PaymentFlowError` with `E_TIMEOUT`, `E_ABORTED` or `E_VERIFY_FAILED`.
+`FonepayError.code` is `E_OPEN_FAILED` (the bank app could not be opened, usually not installed) or `E_INVALID_ARGUMENTS`. The generic helpers raise `PaymentFlowError` with `E_TIMEOUT`, `E_ABORTED`, `E_VERIFY_FAILED`, `E_PAYMENT_FAILED` or `E_NO_VERIFY`.
 
 ## Security
 
