@@ -26,6 +26,7 @@ Accept [Fonepay](https://fonepay.com) **Intent** payments in React Native: the u
 - [Usage](#usage)
 - [Server contract](#server-contract)
 - [API](#api)
+- [Common mistakes](#common-mistakes)
 - [Errors](#errors)
 - [Security](#security)
 - [Documentation](#documentation)
@@ -51,14 +52,38 @@ Nothing else to configure. Opening a bank app needs no permissions. Only if you 
 
 Every Klixsoft payment package follows the same three-step lifecycle, so switching gateways does not change how your code is shaped:
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant App as Your app
+    participant Pkg as react-native-fonepay
+    participant Srv as Your server
+    participant F as Fonepay
+    participant B as Bank app
+
+    App->>Pkg: start() or autoStart
+    Pkg->>Srv: initiate()
+    Srv->>F: create the Intent QR with the signed request
+    F-->>Srv: qr payload, prn and websocket url
+    Srv-->>Pkg: qrString, websocketUrl, banks
+    Pkg-->>App: banks list (searchable)
+    App->>Pkg: selectBank(bank)
+    Pkg->>B: open the bank app with the qrPayload deep link
+    par websocket
+        F-->>Pkg: message (a hint only)
+    and app foreground
+        B-->>Pkg: user returns to your app
+    and polling
+        Pkg->>Pkg: timer every 5 seconds
+    end
+    Pkg->>Srv: verify()
+    Srv->>F: status lookup
+    F-->>Srv: payment status
+    Srv-->>Pkg: success, failed or pending
+    Pkg-->>App: onSuccess or onFailure
 ```
-  Your app                     Your server                       Fonepay
-     |  1. initiate()  ------>   |  create the payment  --------->  |
-     |  <----- what Fonepay needs - |  <-------------------------------|
-     |  2. present  (open the chosen bank app)                                |
-     |  3. verify()    ------>   |  ask Fonepay for the real status -> |
-     |  <----- success | failed | pending                          |
-```
+
+> Diagrams are [Mermaid](https://mermaid.js.org). GitHub renders them; on npmjs.com they show as code, so read this README on GitHub for the pictures.
 
 | Step | You provide | The package does |
 | --- | --- | --- |
@@ -71,6 +96,55 @@ The result of `present` is never treated as proof of payment. Only `verify` deci
 ### Do I need `verify`?
 
 Yes. Fonepay gives the device no proof of payment: returning from Fonepay only means the user came back. Only **your server**, asking Fonepay's API, knows whether it was paid, so `verify` is what turns "the user returned" into `success`. It is also what makes the flow resilient: if the app is killed or the network drops, calling `verify` again later gives the right answer.
+
+### What happens after the user picks a bank
+
+Three things can tell the app the payment finished. They all lead to the same single check with your server, so a missed message never leaves the user waiting:
+
+```mermaid
+flowchart TD
+    W["Websocket message from Fonepay"] --> V
+    F["App returns to the foreground"] --> V
+    P["Poll timer, every 5 seconds"] --> V
+    V["verify: your server asks Fonepay's status API"] --> S{"Server answer"}
+    S -->|"success"| OK["success: onSuccess, watching stops"]
+    S -->|"failed"| ER["failed: onFailure, watching stops"]
+    S -->|"pending"| V2["keep watching"]
+```
+
+A websocket message is only a hint to check sooner. It is never trusted as proof.
+
+### Outcomes and states
+
+While a payment runs, `status` moves through these states, and it always ends in exactly one outcome:
+
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    idle --> initiating: start()
+    initiating --> presenting: initiate resolved
+    initiating --> failed: initiate threw
+    presenting --> verifying: gateway returned
+    presenting --> cancelled: user backed out
+    presenting --> failed: gateway error
+    verifying --> success: verify returned success
+    verifying --> failed: verify returned failed
+    verifying --> timeout: still pending at timeoutMs
+    verifying --> cancelled: aborted through signal
+    success --> [*]
+    failed --> [*]
+    cancelled --> [*]
+    timeout --> [*]
+```
+
+| Outcome | Meaning | Callback | What to show the user |
+| --- | --- | --- | --- |
+| `success` | Your server confirmed the payment. | `onSuccess` | The receipt or unlocked content. |
+| `failed` | The payment failed, `initiate` threw, or the gateway reported an error. `error.code` says which. | `onError` | An error and a "Try again" button. |
+| `cancelled` | The user backed out, or you aborted through `signal`. | `onCancel` | Nothing, or a neutral "Payment cancelled". |
+| `timeout` | Still `pending` when `timeoutMs` ran out. **The payment may still complete**, so do not tell the user they were not charged. | `onError` (`E_TIMEOUT`) | "We are still confirming your payment", and check the order status later. |
+
+`success` is only ever produced by your server (`verify`), except for Khalti without a `verify` (see below).
 
 ## Quick start
 
@@ -153,6 +227,14 @@ The same helpers are exported by all three Klixsoft payment packages, so you can
 
 ## Server contract
 
+Your server needs to expose these endpoints (the names are examples, use your own routes):
+
+| Endpoint on your server | Called by | What it must do |
+| --- | --- | --- |
+| `POST /orders/:id/fonepay` | `initiate` | Log in to Fonepay, create the Intent QR (signed with your private key), fetch the bank list, and return `{ qrString, websocketUrl, banks }`. |
+| `GET /orders/:id/status` | `verify` | Call Fonepay's status lookup with the order's `prn`. Return `success` only for a completed payment of the expected amount and reference. |
+
+
 `initiate` must return the session your server built from Fonepay's Intent QR and bank list:
 
 ```json
@@ -178,6 +260,15 @@ Only `qrString` and `banks` are required. `verify` must call Fonepay's status lo
 | `FonepayError`, `FonepayErrorCode` | Typed errors. |
 
 Full signatures and options are in the [API reference](docs/api-reference.md).
+
+## Common mistakes
+
+- **Putting the Fonepay credentials or private key in the app.** Signing must happen on your server.
+- **Trusting the websocket.** A "success" message only triggers `verify`.
+- **Returning banks without `intentScheme`.** Without it the bank app cannot be opened (`E_INVALID_ARGUMENTS`).
+- **Creating a new session on every render.** Call `initiate` once (`autoStart`, or `start()`); calling it again creates a new QR.
+- **A `verify` that is not idempotent.** It is called every few seconds; fulfil the order once and return `success` on later calls.
+- **Expecting the payment to happen inside your app.** It completes in the bank's own app, so the user leaves and comes back.
 
 ## Errors
 
