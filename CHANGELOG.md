@@ -4,11 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.0-beta.2] - 2026-09-19
+
+### Documentation
+- Documented that this package is for **Checkout by Fonepay** (Intent), not the earlier Fonepay payment gateway.
+- README: Mermaid flow, state and per-gateway diagrams, an outcomes table, the exact server endpoints to build, and a list of common mistakes.
+
+### Changed
+- Releases are published from GitHub Actions with npm Trusted Publishing and provenance.
+
 ## [0.1.0-beta.1] - 2026-09-19
 
 ### Added
-- Documented that this package is for **Checkout by Fonepay** (Intent), not the earlier Fonepay payment gateway.
-- README: Mermaid flow, state and per-gateway diagrams, an outcomes table, the exact server endpoints to build, and a list of common mistakes.
 - `useFonepay`: `initiate`, bank selection and `verify` in one hook.
 - `createFonepayWatcher`: websocket push, app foreground and polling funnelled into one verification.
 - `openBank`, `buildBankDeepLink`, `filterBanks` and `parseSocketMessage`.
