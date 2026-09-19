@@ -1,5 +1,6 @@
 import { parseSocketMessage } from './socket';
-import type { FonepayPaymentState, FonepaySocketHint } from './types';
+import type { PaymentState } from './flow';
+import type { FonepaySocketHint } from './types';
 
 export interface SocketLike {
   onmessage: ((event: { data: unknown }) => void) | null;
@@ -16,7 +17,7 @@ export interface WatcherDeps {
 
 export interface FonepayWatcherOptions {
   /** Asks **your server** whether the payment finished. It must consult Fonepay's status API. */
-  verify: () => Promise<FonepayPaymentState>;
+  verify: () => Promise<PaymentState>;
   websocketUrl?: string;
   /** Poll period. Defaults to 5000 ms. */
   pollIntervalMs?: number;
@@ -34,7 +35,7 @@ export interface FonepayWatcher {
   start(): void;
   stop(): void;
   /** Runs one verification now (for a "Check payment status" button). */
-  check(): Promise<FonepayPaymentState | 'error'>;
+  check(): Promise<PaymentState | 'error'>;
 }
 
 function defaultDeps(): WatcherDeps {
@@ -65,7 +66,7 @@ export function createFonepayWatcher(options: FonepayWatcherOptions): FonepayWat
   const pollIntervalMs = options.pollIntervalMs ?? 5000;
 
   let settled = false;
-  let inFlight: Promise<FonepayPaymentState | 'error'> | null = null;
+  let inFlight: Promise<PaymentState | 'error'> | null = null;
   let socket: SocketLike | null = null;
   let timer: unknown = null;
   let unsubscribeForeground: (() => void) | null = null;
@@ -88,7 +89,7 @@ export function createFonepayWatcher(options: FonepayWatcherOptions): FonepayWat
     socket = null;
   };
 
-  const check = (): Promise<FonepayPaymentState | 'error'> => {
+  const check = (): Promise<PaymentState | 'error'> => {
     if (settled) return Promise.resolve('success');
     if (inFlight) return inFlight;
 

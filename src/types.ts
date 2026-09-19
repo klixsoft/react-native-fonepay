@@ -16,8 +16,5 @@ export interface FonepaySession {
   banks: FonepayBank[];
 }
 
-/** What your server reports after checking Fonepay's authoritative status API. */
-export type FonepayPaymentState = 'success' | 'failed' | 'pending';
-
 /** A hint pushed over the websocket. It is only a trigger, never proof. */
 export type FonepaySocketHint = 'success' | 'declined' | 'unknown';

@@ -5,11 +5,18 @@ export { parseSocketMessage } from './socket';
 export { createFonepayWatcher } from './watcher';
 export type { FonepayWatcher, FonepayWatcherOptions, SocketLike, WatcherDeps } from './watcher';
 export { useFonepay } from './useFonepay';
-export type { UseFonepayOptions, UseFonepayResult } from './useFonepay';
+export type { FonepayStatus, UseFonepayOptions, UseFonepayResult } from './useFonepay';
 export { openBank } from './openBank';
+export { PaymentFlowError, PaymentFlowErrorCode, pollPaymentState, runPaymentFlow } from './flow';
 export type {
-  FonepayBank,
-  FonepayPaymentState,
-  FonepaySession,
-  FonepaySocketHint,
-} from './types';
+  PaymentFlowErrorCodeValue,
+  PaymentFlowOptions,
+  PaymentFlowResult,
+  PaymentOutcome,
+  PaymentState,
+  PaymentStatus,
+  PollOptions,
+} from './flow';
+export { usePaymentFlow } from './usePaymentFlow';
+export type { UsePaymentFlowResult } from './usePaymentFlow';
+export type { FonepayBank, FonepaySession, FonepaySocketHint } from './types';

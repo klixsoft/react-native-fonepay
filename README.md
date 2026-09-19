@@ -1,78 +1,94 @@
 # @klixsoft/react-native-fonepay
 
-Accept [Fonepay](https://fonepay.com) **Intent** payments in React Native: the user picks their
-bank or wallet, your app deep-links into that banking app, they approve, and you confirm the result.
-No WebView, and no native code to link, so it also works in Expo.
+[![npm version](https://img.shields.io/npm/v/@klixsoft/react-native-fonepay.svg)](https://www.npmjs.com/package/@klixsoft/react-native-fonepay)
+[![npm downloads](https://img.shields.io/npm/dm/@klixsoft/react-native-fonepay.svg)](https://www.npmjs.com/package/@klixsoft/react-native-fonepay)
+[![CI](https://github.com/klixsoft/react-native-fonepay/actions/workflows/ci.yml/badge.svg)](https://github.com/klixsoft/react-native-fonepay/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/@klixsoft/react-native-fonepay.svg)](LICENSE)
+[![platforms](https://img.shields.io/badge/platforms-android%20%7C%20ios-blue.svg)](#requirements)
+[![types](https://img.shields.io/badge/types-TypeScript-3178c6.svg)](#api)
 
-Fonepay publishes no React Native package and no mobile SDK for this flow. Payment happens **inside
-the bank's own app**; what an app needs is (1) the right deep link, (2) a reliable way to notice
-the payment finished. That is exactly what this library does.
+Accept [Fonepay](https://fonepay.com) **Intent** payments in React Native: the user picks a bank or wallet, your app deep-links into that banking app, and the payment is confirmed through your server. Pure TypeScript with no native module to link, so it works in Expo too.
 
-- `buildBankDeepLink` / `openBank`: `<intentScheme>/?qrPayload=<QR>` for the chosen bank
-- `createFonepayWatcher`: websocket push, foreground re-check and polling, all ending in one verification call
-- `useFonepay`: search, open bank and watch the payment in one hook
-- Pure TypeScript, typed, tree-shakeable, tested with Node's built-in runner
+## Features
 
-> **Security in one line:** Fonepay requests are signed with your **private key on the server**. The
-> app only displays banks and opens a link. A websocket "success" message is a *hint*; only your
-> server's call to Fonepay's status API proves payment. See [docs/security.md](docs/security.md).
+- Everything for a bank picker in one hook: `useFonepay({ initiate, verify })`
+- Bank deep links (`<intentScheme>/?qrPayload=...`) and bank search
+- Live confirmation from three sources (websocket push, app foreground, polling) that all funnel into your one `verify`
+- Framework-free watcher (`createFonepayWatcher`) for custom UIs
+- Pure TypeScript, typed, tested with Node's built-in test runner
+
+## Table of contents
+
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [How it works](#how-it-works)
+- [Quick start](#quick-start)
+- [Usage](#usage)
+- [Server contract](#server-contract)
+- [API](#api)
+- [Errors](#errors)
+- [Security](#security)
+- [Documentation](#documentation)
+- [Versioning and releases](#versioning-and-releases)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Requirements
 
-React Native 0.70+ (any architecture) or Expo. Android and iOS.
+- React Native **0.70+** (any architecture) or Expo
+- Android and iOS. No native code, no linking step.
 
 ## Installation
 
 ```sh
-pnpm add @klixsoft/react-native-fonepay     # or npm / yarn
+pnpm add @klixsoft/react-native-fonepay
+# or: npm install @klixsoft/react-native-fonepay   /   yarn add @klixsoft/react-native-fonepay
 ```
 
-### iOS
+Nothing else to configure. Opening a bank app needs no permissions. Only if you want to check whether a bank app is installed with `Linking.canOpenURL` do you need each bank's scheme in `LSApplicationQueriesSchemes` (iOS) and `<queries>` (Android 11+); `selectBank` does not need it and reports `E_OPEN_FAILED` when the app cannot open.
 
-Opening a bank app needs no extra configuration. If you also want to *check* whether a bank app is
-installed with `Linking.canOpenURL`, add each bank's scheme to `LSApplicationQueriesSchemes`. That is
-optional; `openBank` simply reports `E_OPEN_FAILED` when the app cannot be opened.
+## How it works
 
-### Android
-
-Opening deep links works as-is. On Android 11+ `Linking.canOpenURL` needs `<queries>` entries;
-`openBank` does not.
-
-## How a payment works
+Every Klixsoft payment package follows the same three-step lifecycle, so switching gateways does not change how your code is shaped:
 
 ```
- App                         Your server                          Fonepay
-  | 1. "buy this" ---------> |                                       |
-  |                          | 2. login, list banks, create QR (signed)
-  |                          | ------------------------------------> |
-  | <-- qrString, banks,     |                                       |
-  |     websocketUrl ------- |                                       |
-  | 3. user picks a bank;    |                                       |
-  |    app opens bank app  --------- qrPayload deep link ----------> bank app
-  | 4. websocket / poll / foreground -> "did it succeed?" -> server asks Fonepay's status API
-  | <------ success | failed |                                       |
+  Your app                     Your server                       Fonepay
+     |  1. initiate()  ------>   |  create the payment  --------->  |
+     |  <----- what Fonepay needs - |  <-------------------------------|
+     |  2. present  (open the chosen bank app)                                |
+     |  3. verify()    ------>   |  ask Fonepay for the real status -> |
+     |  <----- success | failed | pending                          |
 ```
 
-Steps 2 and 4 are yours: see [docs/backend-integration.md](docs/backend-integration.md).
+| Step | You provide | The package does |
+| --- | --- | --- |
+| **initiate** | A function that calls **your server**, which creates the payment with Fonepay and returns the QR session `{ qrString, websocketUrl?, banks }`. | Calls it once, at the start. |
+| **present** | Nothing. | Deep-links into the bank or wallet the user picks (`selectBank`), then watches the payment through the websocket, app foreground and polling. No WebView, no native code. |
+| **verify** | A function that calls **your server**, which asks Fonepay's status API and returns `success`, `failed` or `pending`. | Polls it until the payment settles, times out or is cancelled. |
 
-## Usage
+The result of `present` is never treated as proof of payment. Only `verify` decides the outcome, and it should always be answered by your server from Fonepay's own API.
+
+## Quick start
 
 ```tsx
-import { useFonepay, type FonepaySession } from '@klixsoft/react-native-fonepay';
+import { useFonepay } from '@klixsoft/react-native-fonepay';
 
-function FonepayPicker({ session, orderId, onPaid }: { session: FonepaySession; orderId: string; onPaid: () => void }) {
-  const { banks, search, setSearch, pay, check, checking, message } = useFonepay({
-    session,
-    verify: async () => (await api.get(`/payments/${orderId}/status`)).status,
+function FonepayPicker({ orderId, onPaid }: { orderId: string; onPaid: () => void }) {
+  const { status, banks, search, setSearch, selectBank, check, checking, message } = useFonepay({
+    initiate: () => api.post(`/orders/${orderId}/fonepay`),
+    verify: async () => (await api.get(`/orders/${orderId}/status`)).status,
     onSuccess: onPaid,
+    autoStart: true,
   });
+
+  if (status === 'initiating') return <ActivityIndicator />;
 
   return (
     <View>
       <TextInput value={search} onChangeText={setSearch} placeholder="Search bank or wallet" />
       {message ? <Text>{message}</Text> : null}
       {banks.map((bank) => (
-        <Pressable key={bank.bankCode} onPress={() => pay(bank)}>
+        <Pressable key={bank.bankCode} onPress={() => selectBank(bank)}>
           <Text>{bank.bankName}</Text>
         </Pressable>
       ))}
@@ -82,26 +98,92 @@ function FonepayPicker({ session, orderId, onPaid }: { session: FonepaySession; 
 }
 ```
 
-`session` is exactly what your server returns after creating the QR: `{ qrString, websocketUrl?, banks }`
-with each bank `{ bankCode, bankName, intentScheme, bankIcon? }`.
+## Usage
 
-### Without the hook
+### Hook
+
+`useFonepay(options)`:
+
+| Option | Default | Notes |
+| --- | --- | --- |
+| `initiate` | required | Returns the `FonepaySession` your server created. |
+| `verify` | required | Returns `'success' \| 'failed' \| 'pending'`. |
+| `onSuccess` / `onFailure` | none | Called once when the server settles the payment. |
+| `autoStart` | `false` | Call `initiate` on mount instead of waiting for `start()`. |
+| `pollIntervalMs` | `5000` | Poll period. |
+
+It returns `{ status, session, banks, search, setSearch, start, selectBank, check, checking, message, error, reset }`. `status` is `idle`, `initiating`, `awaiting`, `success` or `failed`.
+
+### Without React
 
 ```ts
+import { createFonepayWatcher, openBank } from '@klixsoft/react-native-fonepay';
+
+const session = await api.post(`/orders/${orderId}/fonepay`);
 const watcher = createFonepayWatcher({
   websocketUrl: session.websocketUrl,
-  verify: () => fetchStatusFromYourServer(),
-  onSuccess: () => navigation.replace('Success'),
+  verify: () => fetchStatus(orderId),
+  onSuccess: () => navigation.replace('Receipt'),
 });
 watcher.start();
-await openBank(bank, session.qrString);
-// later
+await openBank(chosenBank, session.qrString);
 watcher.stop();
 ```
 
+A websocket "success" message is only a trigger to call `verify`; it is never trusted on its own.
+
+### Generic building blocks
+
+The same helpers are exported by all three Klixsoft payment packages, so you can build your own flow on top of them:
+
+| Export | What it is |
+| --- | --- |
+| `runPaymentFlow(options)` | Runs `initiate`, `present` and `verify` in order and resolves with `{ outcome, initiation }`. |
+| `usePaymentFlow(options)` | The same as a React hook: `{ start, cancel, reset, status, isProcessing, error }`. |
+| `pollPaymentState(check, options)` | Polls your server until the state is `success` or `failed`; rejects `E_TIMEOUT` / `E_ABORTED`. |
+| `PaymentState` | `'success' \| 'failed' \| 'pending'`, what `verify` returns. |
+| `PaymentOutcome` | `'success' \| 'failed' \| 'cancelled' \| 'timeout'`, how a flow ended. |
+| `PaymentStatus` | `'idle' \| 'initiating' \| 'presenting' \| 'verifying'` or a `PaymentOutcome`, for driving your UI. |
+
+## Server contract
+
+`initiate` must return the session your server built from Fonepay's Intent QR and bank list:
+
+```json
+{
+  "qrString": "<qr payload from Fonepay>",
+  "websocketUrl": "wss://...",
+  "banks": [{ "bankCode": "NBL", "bankName": "Nabil Bank", "intentScheme": "nabilmobilebanking:/", "bankIcon": "https://..." }]
+}
+```
+
+Only `qrString` and `banks` are required. `verify` must call Fonepay's status lookup and report `success` only for a completed payment of the expected amount and merchant reference. See [Backend integration](docs/backend-integration.md).
+
 ## API
 
-See [docs/api-reference.md](docs/api-reference.md).
+| Export | Purpose |
+| --- | --- |
+| `useFonepay(options)` | The whole lifecycle as a React hook. |
+| `createFonepayWatcher(options)` | Framework-free `{ start, stop, check }`. |
+| `openBank(bank, qrString)` | Open a bank app on the payment. |
+| `buildBankDeepLink(bank, qrString)` | Build the deep link without opening it. |
+| `filterBanks(banks, query)` | Search bank names. |
+| `parseSocketMessage(raw)` | Interpret a websocket message (`success`, `declined`, `unknown`). |
+| `FonepayError`, `FonepayErrorCode` | Typed errors. |
+
+Full signatures and options are in the [API reference](docs/api-reference.md).
+
+## Errors
+
+`FonepayError.code` is `E_OPEN_FAILED` (the bank app could not be opened, usually not installed) or `E_INVALID_ARGUMENTS`. The generic helpers raise `PaymentFlowError` with `E_TIMEOUT`, `E_ABORTED` or `E_VERIFY_FAILED`.
+
+## Security
+
+- Fonepay credentials and the **RSA private key stay on your server**; the app only shows banks and opens a link.
+- Websocket messages are hints. Only your server's call to Fonepay's status API proves payment.
+- Make fulfilment idempotent and authenticate the status endpoint.
+
+More in [docs/security.md](docs/security.md).
 
 ## Documentation
 
@@ -109,11 +191,20 @@ See [docs/api-reference.md](docs/api-reference.md).
 - [API reference](docs/api-reference.md)
 - [Security](docs/security.md)
 - [Troubleshooting](docs/troubleshooting.md)
+- [Changelog](CHANGELOG.md)
+
+## Versioning and releases
+
+This package follows [Semantic Versioning](https://semver.org). While the version is `0.x`, minor releases may contain breaking changes; they are always listed in the [CHANGELOG](CHANGELOG.md). Releases are published to npm from a git tag by GitHub Actions with [provenance](https://docs.npmjs.com/generating-provenance-statements), see [CONTRIBUTING](CONTRIBUTING.md#releasing).
+
+## Contributing
+
+Issues and pull requests are welcome. Please read [CONTRIBUTING](CONTRIBUTING.md) first, and report security problems privately as described in [SECURITY](SECURITY.md).
 
 ## Disclaimer
 
-Independent community library, not affiliated with or endorsed by Fonepay.
+This is an independent, community-maintained library. It is not affiliated with, endorsed by or supported by Fonepay.
 
 ## License
 
-MIT © Klixsoft
+[MIT](LICENSE) © Klixsoft

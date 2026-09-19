@@ -14,8 +14,7 @@ the safety net. Use "Check payment status" (`check()`) to test the endpoint by h
 **Status stays `pending`**: the user has not approved in the bank app yet, or the QR expired.
 Create a new session.
 
-**Success arrives twice**: `onSuccess` is called once per watcher. If you see two, the component
-was mounted twice; ensure `session` is stable (memoise it) so the hook does not recreate the watcher.
+**`start()` seems to do nothing**: it ignores calls while an `initiate` is already running. Read `error` to see why `initiate` failed, or call `reset()` and try again.
 
 **Signature errors from Fonepay** (server side): sign the exact bytes you send and use the key
 matching the environment (development vs production).

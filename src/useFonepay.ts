@@ -2,83 +2,129 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { filterBanks } from './banks';
 import { FonepayError } from './errors';
+import type { PaymentState } from './flow';
 import { openBank } from './openBank';
-import type { FonepayBank, FonepayPaymentState, FonepaySession } from './types';
+import type { FonepayBank, FonepaySession } from './types';
 import { createFonepayWatcher } from './watcher';
 
+/** Where a Fonepay payment is. `awaiting` means the bank list is showing and the payment is being watched. */
+export type FonepayStatus = 'idle' | 'initiating' | 'awaiting' | 'success' | 'failed';
+
 export interface UseFonepayOptions {
-  session: FonepaySession;
-  /** Asks your server (which asks Fonepay) whether the payment finished. */
-  verify: () => Promise<FonepayPaymentState>;
-  onSuccess: () => void;
+  /** Step 1. Ask your server to create the Fonepay Intent QR and return the session. */
+  initiate: () => Promise<FonepaySession>;
+  /** Step 3. Ask your server whether the payment finished. It must consult Fonepay's status API. */
+  verify: () => Promise<PaymentState>;
+  onSuccess?: () => void;
   onFailure?: () => void;
+  /** Calls `initiate` on mount instead of waiting for `start()`. */
+  autoStart?: boolean;
+  /** Poll period. Defaults to 5000 ms. */
   pollIntervalMs?: number;
 }
 
 export interface UseFonepayResult {
+  status: FonepayStatus;
+  session: FonepaySession | null;
+  /** The session's banks, filtered by `search`. */
   banks: FonepayBank[];
   search: string;
   setSearch: (value: string) => void;
-  /** Opens the bank app. Sets `message` when it cannot be opened. */
-  pay: (bank: FonepayBank) => Promise<void>;
+  /** Runs `initiate` and starts watching the payment. */
+  start: () => Promise<void>;
+  /** Step 2. Opens the chosen bank's app on the payment. Sets `message` when it cannot open. */
+  selectBank: (bank: FonepayBank) => Promise<void>;
   /** Verifies now, for a "Check payment status" button. */
   check: () => Promise<void>;
   checking: boolean;
   /** A user-facing status line, empty when there is nothing to say. */
   message: string;
+  /** The error that stopped `initiate`, if any. */
+  error: unknown;
+  /** Stops watching and returns to `idle`. */
+  reset: () => void;
 }
 
 /**
- * Everything a Fonepay bank picker needs: search, opening the bank app and watching the payment
- * (websocket + foreground + polling) until your server confirms it. Watching stops on unmount.
+ * The complete Fonepay lifecycle in one hook: `start()` initiates, the user picks a bank with
+ * `selectBank`, and the payment is watched (websocket, foreground, polling) until your server's
+ * `verify` says it settled. Watching stops on unmount.
  */
 export function useFonepay(options: UseFonepayOptions): UseFonepayResult {
-  const { session, verify, onSuccess, onFailure, pollIntervalMs } = options;
+  const [status, setStatus] = useState<FonepayStatus>('idle');
+  const [session, setSession] = useState<FonepaySession | null>(null);
   const [search, setSearch] = useState<string>('');
   const [checking, setChecking] = useState<boolean>(false);
   const [message, setMessage] = useState<string>('');
+  const [error, setError] = useState<unknown>(null);
 
-  const latest = useRef({ verify, onSuccess, onFailure });
-  latest.current = { verify, onSuccess, onFailure };
+  const latest = useRef(options);
+  const running = useRef(false);
+  latest.current = options;
 
-  const watcher = useMemo(
-    () =>
-      createFonepayWatcher({
-        websocketUrl: session.websocketUrl,
-        pollIntervalMs,
-        verify: () => latest.current.verify(),
-        onSuccess: () => latest.current.onSuccess(),
-        onFailure: () => {
-          setMessage('The payment failed.');
-          latest.current.onFailure?.();
-        },
-        onHint: (hint) => {
-          if (hint === 'declined') setMessage('Payment was declined or cancelled.');
-        },
-      }),
-    [session.websocketUrl, pollIntervalMs]
-  );
+  const watcher = useMemo(() => {
+    if (!session) return null;
+    return createFonepayWatcher({
+      websocketUrl: session.websocketUrl,
+      pollIntervalMs: options.pollIntervalMs,
+      verify: () => latest.current.verify(),
+      onSuccess: () => {
+        setStatus('success');
+        latest.current.onSuccess?.();
+      },
+      onFailure: () => {
+        setStatus('failed');
+        setMessage('The payment failed.');
+        latest.current.onFailure?.();
+      },
+      onHint: (hint) => {
+        if (hint === 'declined') setMessage('Payment was declined or cancelled.');
+      },
+    });
+  }, [session, options.pollIntervalMs]);
 
   useEffect(() => {
+    if (!watcher) return undefined;
     watcher.start();
     return () => watcher.stop();
   }, [watcher]);
 
-  const banks = useMemo(() => filterBanks(session.banks, search), [session.banks, search]);
+  const start = useCallback(async () => {
+    if (running.current) return;
+    running.current = true;
+    setError(null);
+    setMessage('');
+    setStatus('initiating');
+    try {
+      setSession(await latest.current.initiate());
+      setStatus('awaiting');
+    } catch (caught) {
+      setError(caught);
+      setStatus('failed');
+    } finally {
+      running.current = false;
+    }
+  }, []);
 
-  const pay = useCallback(
+  useEffect(() => {
+    if (options.autoStart) void start();
+  }, [options.autoStart, start]);
+
+  const selectBank = useCallback(
     async (bank: FonepayBank) => {
+      if (!session) return;
       setMessage('');
       try {
         await openBank(bank, session.qrString);
-      } catch (error) {
-        setMessage(error instanceof FonepayError ? error.message : `Could not open ${bank.bankName}.`);
+      } catch (caught) {
+        setMessage(caught instanceof FonepayError ? caught.message : `Could not open ${bank.bankName}.`);
       }
     },
-    [session.qrString]
+    [session]
   );
 
   const check = useCallback(async () => {
+    if (!watcher) return;
     setChecking(true);
     try {
       const state = await watcher.check();
@@ -89,5 +135,15 @@ export function useFonepay(options: UseFonepayOptions): UseFonepayResult {
     }
   }, [watcher]);
 
-  return { banks, search, setSearch, pay, check, checking, message };
+  const reset = useCallback(() => {
+    setSession(null);
+    setStatus('idle');
+    setSearch('');
+    setMessage('');
+    setError(null);
+  }, []);
+
+  const banks = useMemo(() => filterBanks(session?.banks ?? [], search), [session, search]);
+
+  return { status, session, banks, search, setSearch, start, selectBank, check, checking, message, error, reset };
 }
