@@ -181,7 +181,50 @@ Full signatures and options are in the [API reference](docs/api-reference.md).
 
 ## Errors
 
-`FonepayError.code` is `E_OPEN_FAILED` (the bank app could not be opened, usually not installed) or `E_INVALID_ARGUMENTS`. The generic helpers raise `PaymentFlowError` with `E_TIMEOUT`, `E_ABORTED`, `E_VERIFY_FAILED`, `E_PAYMENT_FAILED` or `E_NO_VERIFY`.
+`FonepayError.code` is `E_OPEN_FAILED` (the bank app could not be opened, usually not installed) or `E_INVALID_ARGUMENTS`. The generic helpers raise `PaymentFlowError` with `E_INITIATE_FAILED`, `E_PRESENT_FAILED`, `E_VERIFY_FAILED`, `E_PAYMENT_FAILED`, `E_TIMEOUT`, `E_ABORTED` or `E_NO_VERIFY`.
+
+### Typed results and errors
+
+Everything is typed end to end. A flow result is a discriminated union on `outcome`, so TypeScript only lets you read what exists:
+
+```ts
+const result = await runPaymentFlow({ initiate, present, verify });
+
+switch (result.outcome) {
+  case 'success':
+    result.initiation;
+    break;
+  case 'failed':
+  case 'timeout':
+    result.error.code;
+    break;
+  case 'cancelled':
+    break;
+}
+```
+
+There is one error model. Every failure is a `PaymentFlowError` with:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `code` | `PaymentFlowErrorCodeValue` | Stable code: `E_INITIATE_FAILED`, `E_PRESENT_FAILED`, `E_VERIFY_FAILED`, `E_PAYMENT_FAILED`, `E_TIMEOUT`, `E_ABORTED`, `E_NO_VERIFY`. |
+| `step` | `'initiate' \| 'present' \| 'verify' \| null` | Where in the flow it happened. |
+| `cause` | `unknown` | The original error, for example your API's error or a `FonepayError`. |
+| `isCancelled` | `boolean` | True for `E_ABORTED`. |
+
+To handle Fonepay-specific errors, read the cause with the typed helper:
+
+```ts
+import { getFonepayError, PaymentFlowErrorCode } from '@klixsoft/react-native-fonepay';
+
+onError: (error) => {
+  const fonepayError = getFonepayError(error);
+  if (fonepayError?.isCancelled) return;
+  if (error.code === PaymentFlowErrorCode.InitiateFailed) showToast('Could not start the payment');
+}
+```
+
+`isFonepayError(value)` and `isPaymentFlowError(value)` are type guards for values of unknown type.
 
 ## Security
 

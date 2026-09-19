@@ -27,7 +27,7 @@ export interface FonepayWatcherOptions {
   /** Called for websocket hints, for example to show "declined". Never treat as final. */
   onHint?: (hint: FonepaySocketHint) => void;
   /** Called when a check throws. Watching continues. */
-  onError?: (error: unknown) => void;
+  onError?: (error: Error) => void;
   deps?: Partial<WatcherDeps>;
 }
 
@@ -52,6 +52,8 @@ function defaultDeps(): WatcherDeps {
     clearInterval: (handle) => clearInterval(handle as ReturnType<typeof setInterval>),
   };
 }
+
+const asError = (error: unknown): Error => (error instanceof Error ? error : new Error(String(error)));
 
 /**
  * Watches a Fonepay payment until it settles. A websocket push, the app returning to the foreground
@@ -108,7 +110,7 @@ export function createFonepayWatcher(options: FonepayWatcherOptions): FonepayWat
         }
         return state;
       } catch (error) {
-        options.onError?.(error);
+        options.onError?.(asError(error));
         return 'error' as const;
       } finally {
         inFlight = null;
@@ -131,7 +133,7 @@ export function createFonepayWatcher(options: FonepayWatcherOptions): FonepayWat
         };
       } catch (error) {
         socket = null;
-        options.onError?.(error);
+        options.onError?.(asError(error));
       }
     }
 

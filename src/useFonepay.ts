@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { filterBanks } from './banks';
 import { FonepayError } from './errors';
-import type { PaymentState } from './flow';
+import { PaymentFlowErrorCode, toPaymentFlowError } from './flow';
+import type { PaymentFlowError, PaymentState } from './flow';
 import { openBank } from './openBank';
 import type { FonepayBank, FonepaySession } from './types';
 import { createFonepayWatcher } from './watcher';
@@ -17,8 +18,8 @@ export interface UseFonepayOptions {
   verify: () => Promise<PaymentState>;
   onSuccess?: () => void;
   onFailure?: () => void;
-  /** Called when `initiate` throws. */
-  onError?: (error: unknown) => void;
+  /** Called when `initiate` throws, with a `PaymentFlowError` (`E_INITIATE_FAILED`, `cause` = the original error). */
+  onError?: (error: PaymentFlowError) => void;
   /** Calls `initiate` on mount instead of waiting for `start()`. */
   autoStart?: boolean;
   /** Poll period. Defaults to 5000 ms. */
@@ -41,8 +42,8 @@ export interface UseFonepayResult {
   checking: boolean;
   /** A user-facing status line, empty when there is nothing to say. */
   message: string;
-  /** The error that stopped `initiate`, if any. */
-  error: unknown;
+  /** The error that stopped `initiate`, or `null`. */
+  error: PaymentFlowError | null;
   /** Stops watching and returns to `idle`. */
   reset: () => void;
 }
@@ -58,7 +59,7 @@ export function useFonepay(options: UseFonepayOptions): UseFonepayResult {
   const [search, setSearch] = useState<string>('');
   const [checking, setChecking] = useState<boolean>(false);
   const [message, setMessage] = useState<string>('');
-  const [error, setError] = useState<unknown>(null);
+  const [error, setError] = useState<PaymentFlowError | null>(null);
 
   const latest = useRef(options);
   const running = useRef(false);
@@ -101,9 +102,10 @@ export function useFonepay(options: UseFonepayOptions): UseFonepayResult {
       setSession(await latest.current.initiate());
       setStatus('awaiting');
     } catch (caught) {
-      setError(caught);
+      const flowError = toPaymentFlowError(caught, PaymentFlowErrorCode.InitiateFailed, 'initiate');
+      setError(flowError);
       setStatus('failed');
-      latest.current.onError?.(caught);
+      latest.current.onError?.(flowError);
     } finally {
       running.current = false;
     }
