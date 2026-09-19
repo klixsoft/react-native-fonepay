@@ -1,0 +1,45 @@
+{
+  "name": "@klixsoft/react-native-fonepay",
+  "version": "0.1.0",
+  "description": "Fonepay Intent (bank-app deep link) payments for React Native: bank deep links, live payment watching and a React hook. No WebView, no native code.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "react-native": "src/index.ts",
+  "source": "src/index.ts",
+  "files": [
+    "src",
+    "docs",
+    "!**/__tests__"
+  ],
+  "keywords": [
+    "react-native",
+    "fonepay",
+    "payment",
+    "payment-gateway",
+    "nepal",
+    "intent",
+    "qr",
+    "deeplink"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --import ./__tests__/register.mjs --test __tests__/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/klixsoft/react-native-fonepay.git"
+  },
+  "bugs": {
+    "url": "https://github.com/klixsoft/react-native-fonepay/issues"
+  },
+  "homepage": "https://github.com/klixsoft/react-native-fonepay#readme",
+  "author": "Klixsoft",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": ">=0.70.0"
+  }
+}
