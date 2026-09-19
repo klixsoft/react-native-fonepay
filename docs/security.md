@@ -1,5 +1,7 @@
 # Security
 
+This applies to **Checkout by Fonepay** (Intent).
+
 1. **Private key and credentials stay on the server.** Signing requires the RSA private key; a key in
    the app can be extracted and used to create payments as you.
 2. **Websocket messages are hints.** Anyone can craft one. The watcher only uses them to trigger

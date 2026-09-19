@@ -1,7 +1,7 @@
 {
   "name": "@klixsoft/react-native-fonepay",
   "version": "0.1.0-beta.1",
-  "description": "Fonepay Intent (bank-app deep link) payments for React Native: bank deep links, live payment watching and a React hook. No WebView, no native code.",
+  "description": "Checkout by Fonepay (Intent) for React Native: bank-app deep links, live payment watching and a React hook. No WebView, no native code.",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "react-native": "src/index.ts",
@@ -15,6 +15,8 @@
   "keywords": [
     "react-native",
     "fonepay",
+    "fonepay-checkout",
+    "checkout-by-fonepay",
     "payment",
     "payment-gateway",
     "nepal",

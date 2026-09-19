@@ -7,6 +7,7 @@ All notable changes to this project are documented here. The format follows
 ## [0.1.0-beta.1] - 2026-09-19
 
 ### Added
+- Documented that this package is for **Checkout by Fonepay** (Intent), not the earlier Fonepay payment gateway.
 - README: Mermaid flow, state and per-gateway diagrams, an outcomes table, the exact server endpoints to build, and a list of common mistakes.
 - `useFonepay`: `initiate`, bank selection and `verify` in one hook.
 - `createFonepayWatcher`: websocket push, app foreground and polling funnelled into one verification.

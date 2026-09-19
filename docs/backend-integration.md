@@ -1,6 +1,6 @@
 # Backend integration
 
-Your server talks to Fonepay's third-party **Intent** API. Confirm the exact domain, paths and
+Your server talks to the **Checkout by Fonepay** (Intent) third-party API. This is not the earlier Fonepay payment gateway, which uses different credentials and endpoints. Confirm the exact domain, paths and
 credentials in the Fonepay integration documentation you were given; the shape below is what this
 library expects.
 

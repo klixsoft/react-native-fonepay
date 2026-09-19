@@ -7,10 +7,13 @@
 [![platforms](https://img.shields.io/badge/platforms-android%20%7C%20ios-blue.svg)](#requirements)
 [![types](https://img.shields.io/badge/types-TypeScript-3178c6.svg)](#api)
 
-Accept [Fonepay](https://fonepay.com) **Intent** payments in React Native: the user picks a bank or wallet, your app deep-links into that banking app, and the payment is confirmed through your server. Pure TypeScript with no native module to link, so it works in Expo too.
+**Checkout by Fonepay** for React Native: the user picks a bank or wallet, your app deep-links into that banking app, and the payment is confirmed through your server. Pure TypeScript with no native module to link, so it works in Expo too.
+
+> **Which Fonepay product is this?** This package implements **[Checkout by Fonepay](https://fonepay.com)**, Fonepay's Intent-based checkout (QR / bank-app deep link, OAuth login, RSA-signed requests, websocket status). It is **not** the earlier Fonepay payment gateway integrations (the ones that redirect the user to a Fonepay-hosted page and come back with signed query parameters). Those use different credentials and endpoints, so they will not work with this package. If your Fonepay merchant account was set up for Checkout by Fonepay, you are in the right place.
 
 ## Features
 
+- Built for **Checkout by Fonepay** (Intent), not the earlier Fonepay payment gateway
 - Everything for a bank picker in one hook: `useFonepay({ initiate, verify })`
 - Bank deep links (`<intentScheme>/?qrPayload=...`) and bank search
 - Live confirmation from three sources (websocket push, app foreground, polling) that all funnel into your one `verify`
