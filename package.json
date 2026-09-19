@@ -1,6 +1,6 @@
 {
   "name": "@klixsoft/react-native-fonepay",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "description": "Checkout by Fonepay (Intent) for React Native: bank-app deep links, live payment watching and a React hook. No WebView, no native code.",
   "main": "src/index.ts",
   "types": "src/index.ts",
